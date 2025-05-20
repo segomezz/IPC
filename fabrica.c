@@ -8,24 +8,35 @@
 #include <string.h>
 #include <time.h>
 #include <sys/wait.h>
+#include <errno.h>
+
 
 #define SHM_NAME "/cinta_transportadora"
 #define TAM_MEM sizeof(char) * 2
 
-int main(){
-  int N;
+int main(int argc, char *argv[]){
+    // 1. Verificación de que si se pasen 2 argumentos
+    if (argc != 2) {
+        errno= EINVAL;
+        perror("Error: se debe pasar un número par");
+        return 1;
+  }
+
+
+    int N = atoi(argv[1]);
+
+    // 2. Verificación que el número sea par
+    if (N <=0 || N%2 != 0) {
+        errno= EINVAL;
+        perror("Error, el número debe ser par");
+        return 1;
+}
+    printf("N recibido correctamente: %d\n", N);
+
   int fd[2];
   char *conjunto[] = {"AB", "AC", "BC"};
-  
-  //1. Leer numero y ver si es par
-  printf("Pares de productos a producir: ");
-  int resultado = scanf("%d", &N);
-  if(N % 2 != 0){
-    printf("Numero impar\n");
-    return 2;
-  } 
 
-  // 2. Crear memoria compartida
+    // 3. Crear memoria compartida
   int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
   if (shm_fd == -1) {
       perror("Error al crear memoria compartida");
@@ -73,6 +84,6 @@ int main(){
     close(shm_fd);
     shm_unlink(SHM_NAME);
   }
-  
+
   return 0;
 }
