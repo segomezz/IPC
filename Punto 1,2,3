@@ -1,0 +1,142 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <string.h>
+#include <time.h>
+#include <sys/wait.h>
+#include <errno.h>
+
+
+#define SHM_NAME "/cinta_transportadora"
+#define TAM_MEM sizeof(char) * 2
+
+int main(int argc, char *argv[]){
+    // 1. Verificación de que si se pasen 2 argumentos
+    if (argc != 2) {
+        errno= EINVAL;
+        perror("Error: se debe pasar un número par");
+        return 1;
+  }
+
+
+    int N = atoi(argv[1]);
+
+    // 2. Verificación que el número sea par
+    if (N <=0 || N%2 != 0) {
+        errno= EINVAL;
+        perror("Error, el número debe ser par");
+        return 1;
+ }
+  //  printf("N recibido correctamente: %d\n", N);
+
+  int fd[2];
+  char *conjunto[] = {"AB", "AC", "BC"};
+
+
+  // 3. Crear memoria compartida
+  int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+  if (shm_fd == -1) {
+      perror("Error al crear memoria compartida");
+      return 2;
+  }
+
+  // Ajustar tamaño de la memoria
+  if (ftruncate(shm_fd, TAM_MEM) == -1) {
+      perror("Error al configurar tamaño de memoria");
+      return 3;
+  }
+
+  char *cinta = mmap(NULL, TAM_MEM, PROT_READ | PROT_WRITE,   MAP_SHARED, shm_fd, 0);
+  if (cinta == MAP_FAILED) {
+      perror("Error al mapear memoria");
+      return 4;
+  }
+
+  //3. Crear el pipe de comunicación fábica-productor
+
+  int pipefd[2];
+    if (pipe(pipefd) <0) {
+    perror("Error al crear la tubería");
+    exit(1);
+}
+
+  pid_t pid = fork();
+
+
+  if(pid < 0){
+    perror("Error al crear proceso\n");
+    return 3;
+
+
+
+
+  } else if(pid == 0){
+    // Tubería
+        close(pipefd[1]);
+
+    int N;
+    char *cinta;
+
+    // Leer N
+    if (read(pipefd[0], &N, sizeof(int)) != sizeof(int)) {
+        perror("Error leyendo N desde la tubería");
+        exit(1);
+    }
+
+    // Leer puntero a memoria compartida
+    if (read(pipefd[0], &cinta, sizeof(char *)) != sizeof(char *)) {
+        perror("Error leyendo dirección de memoria desde la tubería");
+        exit(1);
+    }
+
+    close(pipefd[0]);  // Cerrar el extremo de lectura
+
+    printf("Proceso productor: N = %d\n", N);
+
+
+    for (int i = 0; i < N; i++) {
+     const char *producto = conjunto[rand() % 3];
+      strncpy(cinta, producto, 2);  // Escribe en memoria compartida
+      printf("Producido: %s\n", producto);
+      sleep(1);
+    }
+    strncpy(cinta, "ZZ", 2); //Finalizado
+    printf("Producido: ZZ\n");
+
+
+
+
+
+
+  } else {
+
+        // Cierre del extremo de lectura
+    close(pipefd[0]);
+
+    // Escribir N
+    if (write(pipefd[1], &N, sizeof(int)) != sizeof(int)) {
+        perror("Error escribiendo N en la tubería");
+        exit(1);
+    }
+
+    // Escribir dirección del buffer compartido
+    if (write(pipefd[1], &cinta, sizeof(char *)) != sizeof(char *)) {
+        perror("Error escribiendo dirección de memoria en la tubería");
+        exit(1);
+    }
+
+    close(pipefd[1]);
+    //Padre
+    wait(NULL);
+    // Liberar recursos
+    munmap(cinta, TAM_MEM);
+    close(shm_fd);
+    shm_unlink(SHM_NAME);
+  }
+
+  return 0;
+}
