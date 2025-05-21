@@ -9,7 +9,7 @@
 #include <time.h>
 #include <sys/wait.h>
 #include <errno.h>
-
+#include <semaphore.h>
 
 #define SHM_NAME "/cinta_transportadora"
 #define TAM_MEM sizeof(char) * 2
@@ -21,23 +21,22 @@ int main(int argc, char *argv[]){
         perror("Error: se debe pasar un número par");
         return 1;
   }
-
-
-    int N = atoi(argv[1]);
-
-    // 2. Verificación que el número sea par
-    if (N <=0 || N%2 != 0) {
-        errno= EINVAL;
-        perror("Error, el número debe ser par");
-        return 1;
- }
   //  printf("N recibido correctamente: %d\n", N);
 
   int fd[2];
   char *conjunto[] = {"AB", "AC", "BC"};
+  const char *nomsemp = "/SEMP";
+  const char *nomsemh = "/SEMH";
 
+  sem_t *semp = sem_open(nomsemp, O_CREAT, 0666, 1);
+  sem_t *semh = sem_open(nomsemh, O_CREAT, 0666, 0);
 
-  // 3. Crear memoria compartida
+  if (semp == SEM_FAILED ||  semh == SEM_FAILED){
+    perror("Falla sem");
+    return 1;
+  }
+
+  // 1. Crear memoria compartida
   int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
   if (shm_fd == -1) {
       perror("Error al crear memoria compartida");
@@ -55,8 +54,7 @@ int main(int argc, char *argv[]){
       perror("Error al mapear memoria");
       return 4;
   }
-
-  //3. Crear el pipe de comunicación fábica-productor
+  //2. Crear el pipe de comunicación fábica-productor
 
   int pipefd[2];
     if (pipe(pipefd) <0) {
@@ -76,7 +74,7 @@ int main(int argc, char *argv[]){
 
   } else if(pid == 0){
     // Tubería
-        close(pipefd[1]);
+	close(pipefd[1]);
 
     int N;
     char *cinta;
@@ -86,6 +84,9 @@ int main(int argc, char *argv[]){
         perror("Error leyendo N desde la tubería");
         exit(1);
     }
+
+    sem_post(semp);
+    sem_wait(semh);
 
     // Leer puntero a memoria compartida
     if (read(pipefd[0], &cinta, sizeof(char *)) != sizeof(char *)) {
@@ -100,9 +101,10 @@ int main(int argc, char *argv[]){
 
     for (int i = 0; i < N; i++) {
      const char *producto = conjunto[rand() % 3];
-      strncpy(cinta, producto, 2);  // Escribe en memoria compartida
+     strncpy(cinta, producto, 2);  // Escribe en memoria compartida
       printf("Producido: %s\n", producto);
-      sleep(1);
+      //sleep(1);
+     // Semapofo para los robots
     }
     strncpy(cinta, "ZZ", 2); //Finalizado
     printf("Producido: ZZ\n");
@@ -116,12 +118,22 @@ int main(int argc, char *argv[]){
 
         // Cierre del extremo de lectura
     close(pipefd[0]);
+    int N = atoi(argv[1]);
+
+    // 2. Verificación que el número sea par
+    if (N <=0 || N%2 != 0) {
+        errno= EINVAL;
+        perror("Error, el número debe ser par");
+        return 1;
+ }
 
     // Escribir N
     if (write(pipefd[1], &N, sizeof(int)) != sizeof(int)) {
         perror("Error escribiendo N en la tubería");
         exit(1);
     }
+    sem_post(semh);
+    sem_wait(semp);
 
     // Escribir dirección del buffer compartido
     if (write(pipefd[1], &cinta, sizeof(char *)) != sizeof(char *)) {
@@ -140,3 +152,4 @@ int main(int argc, char *argv[]){
 
   return 0;
 }
+
