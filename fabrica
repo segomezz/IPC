@@ -34,25 +34,28 @@ int main(int argc, char *argv[]){
   const char *nomsemp = "/SEMP";
 
   // Definición de los semáforos
+  sem_unlink("/SEMP");   // Borra cualquier rastro previo
   sem_t *semp = sem_open(nomsemp, O_CREAT, 0666, 1);
   if (semp == SEM_FAILED) {
     perror("Error al crear semáforo del productor");
     exit(1);
 }
 
-
+  sem_unlink("/SEMR2");   // Borra cualquier rastro previo
   sem_t *semr2 = sem_open("/SEMR2", O_CREAT, 0666, 0);
   if (semr2 == SEM_FAILED) {
     perror("Error al crear semáforo de robot 2");
     exit(1);
 }
 
-
+  sem_unlink("/SEMR3");
   sem_t *semr3 = sem_open("/SEMR3", O_CREAT, 0666, 0);
   if (semr3 == SEM_FAILED) {
     perror("Error al crear semáforo de robot 3");
     exit(1);
 }
+
+  sem_unlink("/SEMR1");
   sem_t *semr1 = sem_open("/SEMR1", O_CREAT, 0666, 0);
   if (semr1 == SEM_FAILED ) {
     perror("Error al crear semáforo de robot 1");
@@ -143,6 +146,7 @@ int main(int argc, char *argv[]){
 	// Cierre del extremo de lectura
       close(pipefd[0]);
       int N = atoi(argv[1]);
+
       // 2. Verificación que el número sea par
       if (N <=0 || N%2 != 0) {
         errno= EINVAL;
@@ -171,3 +175,5 @@ int main(int argc, char *argv[]){
 
   return 0;
 }
+
+
