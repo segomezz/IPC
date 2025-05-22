@@ -1,0 +1,50 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <string.h>
+#include <time.h>
+#include <sys/wait.h>
+#include <errno.h>
+#include <semaphore.h>
+#define SHM_NAME "/cinta_transportadora"
+#define TAM_MEM sizeof(char) * 2
+#define SEM_P "/SEMP"
+#define SEM_R1 "/SEMR1"
+#define SEM_R2 "/SEMR2"
+
+int main() {
+    sem_t *semp = sem_open(SEM_P, 0);
+    sem_t *semr1 = sem_open(SEM_R1, 0);
+    sem_t *semr2 = sem_open(SEM_R2, 0);
+
+    int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+    char *cinta = mmap(NULL, TAM_MEM, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+
+    int cp = 0;
+    while (1) {
+        sem_wait(semr1);
+
+        if (strncmp(cinta, "ZZ", 2) == 0) {
+            break;
+        }
+
+	if (strncmp(cinta, "AB", 2) == 0) {
+            printf("Robot 1 empaqueta productos AB\n");
+            cp++;
+            strncpy(cinta, "--", 2);
+            sem_post(semp);
+        } else {
+            sem_post(semr2);
+        }
+
+	usleep(10000);
+    }
+
+    printf("Robot 1 empaquetó un total de %d productos\n", cp);
+    return 0;
+}
+
