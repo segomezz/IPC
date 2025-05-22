@@ -1,3 +1,7 @@
+include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -16,40 +20,49 @@
 #define TAM_MEM sizeof(char) * 2
 
 int main(int argc, char *argv[]){
-    // 1. Verificación de que si se pasen 2 argumentos
-    if (argc != 2) {
-        errno= EINVAL;
-        perror("Error: se debe pasar un número par");
-        return 1;
+  // 1. Verificación de que si se pasen 2 argumentos
+  if (argc != 2) {
+    errno= EINVAL;
+    perror("Error: se debe pasar un número par");
+    return 1;
   }
-  //  printf("N recibido correctamente: %d\n", N);
+
 
   int fd[2];
   char *conjunto[] = {"AB", "AC", "BC"};
   const char *nomsemp = "/SEMP";
 
-
+  // Definición de los semáforos
   sem_t *semp = sem_open(nomsemp, O_CREAT, 0666, 1);
-  sem_t *semr1 = sem_open("/SEMR1", O_CREAT, 0666, 0);
+  if (semp == SEM_FAILED) {
+    perror("Error al crear semáforo del productor");
+    exit(1);
+}
 
+
+  sem_t *semr2 = sem_open("/SEMR2", O_CREAT, 0666, 0);
+  if (semr2 == SEM_FAILED) {
+    perror("Error al crear semáforo de robot 2");
+    exit(1);
+}
+
+
+  sem_t *semr3 = sem_open("/SEMR3", O_CREAT, 0666, 0);
+  if (semr3 == SEM_FAILED) {
+    perror("Error al crear semáforo de robot 3");
+    exit(1);
+}
+  sem_t *semr1 = sem_open("/SEMR1", O_CREAT, 0666, 0);
   if (semr1 == SEM_FAILED ) {
     perror("Error al crear semáforo de robot 1");
     exit(1);
 }
-
-  if (semp == SEM_FAILED){
-    perror("Falla semaforo productor\n");
-    return 1;
-  }
-
-  // 1. Crear memoria compartida
+  //  Crear memoria compartida
   int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
   if (shm_fd == -1) {
       perror("Error al crear memoria compartida");
       return 2;
   }
-
-  // Ajustar tamaño de la memoria
 
   // Ajustar tamaño de la memoria
   if (ftruncate(shm_fd, TAM_MEM) == -1) {
@@ -63,10 +76,10 @@ int main(int argc, char *argv[]){
       return 4;
   }
 
-  //2. Crear el pipe de comunicación fábica-productor
+  // Crear el pipe de comunicación fábica-productor
 
   int pipefd[2];
-    if (pipe(pipefd) <0) {
+  if (pipe(pipefd) <0) {
     perror("Error al crear la tubería");
     exit(1);
 }
@@ -77,21 +90,18 @@ int main(int argc, char *argv[]){
   if(pid < 0){
     perror("Error al crear proceso\n");
     return 3;
-
-
-
-
-  } else if(pid == 0){
+  }
+  else if(pid == 0){
     // Tubería
-	close(pipefd[1]);
+    close(pipefd[1]);
 
     int N;
 
     // Leer N
     if (read(pipefd[0], &N, sizeof(int)) != sizeof(int)) {
-        perror("Error leyendo N desde la tubería");
-        exit(1);
-    }
+      perror("Error leyendo N desde la tubería");
+      exit(1);
+      }
 
 
     close(pipefd[0]);  // Cerrar el extremo de lectura
@@ -100,47 +110,62 @@ int main(int argc, char *argv[]){
 
 
     for (int i = 0; i < N; i++) {
-     const char *producto = conjunto[rand() % 3];
+      const char *producto = conjunto[rand() % 3];
       sem_wait(semp);
       strncpy(cinta, producto, 2);  // Escribe en memoria compartida
-            printf("Producido: %s\n", producto);  // <-- Faltaba esto
-      fflush(stdout);                      // <-- Asegura que se imprima
-      sem_post(semr1);
-      //sleep(1);
-     // Semapofo para los robots
+      printf("Producido: %s\n", producto);
+
+   // Verificación de cual robot le corresponde para despertarlo
+      if (strcmp(producto, "AB") == 0)
+        sem_post(semr1);
+
+      else if (strcmp(producto, "AC") == 0)
+        sem_post(semr2);
+
+      else
+	sem_post(semr3);
     }
-    strncpy(cinta, "ZZ", 2); //Finalizado
-    printf("Producido: ZZ\n");
+      sem_wait(semp);
+      strncpy(cinta, "ZZ", 2); //Finalizado
+      printf("Producido: ZZ\n");
+      fflush(stdout);
+
+
+        // Despertar a todos para que se cierren
     sem_post(semr1);
+    sem_post(semr2);
+    sem_post(semr3);
 
 
   } else {
 
-        // Cierre del extremo de lectura
-    close(pipefd[0]);
-    int N = atoi(argv[1]);
-
-    // 2. Verificación que el número sea par
-    if (N <=0 || N%2 != 0) {
+	// Cierre del extremo de lectura
+      close(pipefd[0]);
+      int N = atoi(argv[1]);
+      // 2. Verificación que el número sea par
+      if (N <=0 || N%2 != 0) {
         errno= EINVAL;
         perror("Error, el número debe ser par");
         return 1;
  }
 
     // Escribir N
-    if (write(pipefd[1], &N, sizeof(int)) != sizeof(int)) {
+      if (write(pipefd[1], &N, sizeof(int)) != sizeof(int)) {
         perror("Error escribiendo N en la tubería");
         exit(1);
     }
 
-
-    close(pipefd[1]);
-    //Padre
-    wait(NULL);
-    // Liberar recursos
-    munmap(cinta, TAM_MEM);
-    close(shm_fd);
-    shm_unlink(SHM_NAME);
+      close(pipefd[1]);
+      //Padre
+      wait(NULL);
+      // Liberar recursos
+      sem_close(semp); sem_unlink("/SEMP");
+      sem_close(semr1); sem_unlink("/SEMR1");
+      sem_close(semr2); sem_unlink("/SEMR2");
+      sem_close(semr3); sem_unlink("/SEMR3");
+      munmap(cinta, TAM_MEM);
+      close(shm_fd);
+      shm_unlink(SHM_NAME);
   }
 
   return 0;
