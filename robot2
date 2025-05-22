@@ -14,37 +14,54 @@
 #define TAM_MEM sizeof(char) * 2
 #define SEM_P "/SEMP"
 #define SEM_R2 "/SEMR2"
-#define SEM_R3 "/SEMR3"
-
+#define PRODUCTO "AC"
+#define ROBOT "Robot 2"
 int main() {
-    sem_t *semp = sem_open(SEM_P, 0);
-    sem_t *semr2 = sem_open(SEM_R2, 0);
-    sem_t *semr3 = sem_open(SEM_R3, 0);
+    // Apertura y verificación de semáforos
+  sem_t *semp = sem_open(SEM_P, 0);
+  if (semp == SEM_FAILED) {
+      perror("Error abriendo semp");
+      exit(1);
+    }
 
+    sem_t *semr2 = sem_open(SEM_R2, 0);
+    while ((semr2 = sem_open("/SEMR2", 0)) == SEM_FAILED) {
+      perror("Esperando a que exista semr2...");
+      sleep(1);
+ }
+
+
+    // Apertura de memoria compartida
     int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+    if (shm_fd == -1) {
+        perror("Error abriendo memoria compartida");
+        exit(1);
+    }
+
     char *cinta = mmap(NULL, TAM_MEM, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (cinta == MAP_FAILED) {
+        perror("Error mapeando memoria compartida");
+        exit(1);
+    }
 
     int cp = 0;
-    printf("holii\n");
     while (1) {
-        sem_wait(semr2);
+      sem_wait(semr2);  // Espera su turno
 
-        if (strncmp(cinta, "ZZ", 2) == 0) {
-            break;
+      if (strncmp(cinta, "ZZ", 2) == 0) break;
+
+      if (strncmp(cinta, PRODUCTO, 2) == 0) {
+        printf(ROBOT " empaqueta productos " PRODUCTO "\n");
+        strncpy(cinta, "--", 2);
+        cp++;
+	sem_post(semp);  // Libera al productor
         }
-
-	if (strncmp(cinta, "AC", 2) == 0) {
-            printf("Robot 1 empaqueta productos AC\n");
-            cp++;
-            strncpy(cinta, "--", 2);
-            sem_post(semp);
-        } else {
-            sem_post(semr3);
-        }
-
-	usleep(10000);
+      usleep(10000);
     }
 
     printf("Robot 2 empaquetó un total de %d productos\n", cp);
     return 0;
 }
+
+
+
