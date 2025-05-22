@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <semaphore.h>
 
+
 #define SHM_NAME "/cinta_transportadora"
 #define TAM_MEM sizeof(char) * 2
 
@@ -26,13 +27,18 @@ int main(int argc, char *argv[]){
   int fd[2];
   char *conjunto[] = {"AB", "AC", "BC"};
   const char *nomsemp = "/SEMP";
-  const char *nomsemh = "/SEMH";
+
 
   sem_t *semp = sem_open(nomsemp, O_CREAT, 0666, 1);
-  sem_t *semh = sem_open(nomsemh, O_CREAT, 0666, 0);
+  sem_t *semr1 = sem_open("/SEMR1", O_CREAT, 0666, 0);
 
-  if (semp == SEM_FAILED ||  semh == SEM_FAILED){
-    perror("Falla sem");
+  if (semr1 == SEM_FAILED ) {
+    perror("Error al crear semáforo de robot 1");
+    exit(1);
+}
+
+  if (semp == SEM_FAILED){
+    perror("Falla semaforo productor\n");
     return 1;
   }
 
@@ -42,6 +48,8 @@ int main(int argc, char *argv[]){
       perror("Error al crear memoria compartida");
       return 2;
   }
+
+  // Ajustar tamaño de la memoria
 
   // Ajustar tamaño de la memoria
   if (ftruncate(shm_fd, TAM_MEM) == -1) {
@@ -54,6 +62,7 @@ int main(int argc, char *argv[]){
       perror("Error al mapear memoria");
       return 4;
   }
+
   //2. Crear el pipe de comunicación fábica-productor
 
   int pipefd[2];
@@ -77,7 +86,6 @@ int main(int argc, char *argv[]){
 	close(pipefd[1]);
 
     int N;
-    char *cinta;
 
     // Leer N
     if (read(pipefd[0], &N, sizeof(int)) != sizeof(int)) {
@@ -85,14 +93,6 @@ int main(int argc, char *argv[]){
         exit(1);
     }
 
-    sem_post(semp);
-    sem_wait(semh);
-
-    // Leer puntero a memoria compartida
-    if (read(pipefd[0], &cinta, sizeof(char *)) != sizeof(char *)) {
-        perror("Error leyendo dirección de memoria desde la tubería");
-        exit(1);
-    }
 
     close(pipefd[0]);  // Cerrar el extremo de lectura
 
@@ -101,17 +101,17 @@ int main(int argc, char *argv[]){
 
     for (int i = 0; i < N; i++) {
      const char *producto = conjunto[rand() % 3];
-     strncpy(cinta, producto, 2);  // Escribe en memoria compartida
-      printf("Producido: %s\n", producto);
+      sem_wait(semp);
+      strncpy(cinta, producto, 2);  // Escribe en memoria compartida
+            printf("Producido: %s\n", producto);  // <-- Faltaba esto
+      fflush(stdout);                      // <-- Asegura que se imprima
+      sem_post(semr1);
       //sleep(1);
      // Semapofo para los robots
     }
     strncpy(cinta, "ZZ", 2); //Finalizado
     printf("Producido: ZZ\n");
-
-
-
-
+    sem_post(semr1);
 
 
   } else {
@@ -132,14 +132,7 @@ int main(int argc, char *argv[]){
         perror("Error escribiendo N en la tubería");
         exit(1);
     }
-    sem_post(semh);
-    sem_wait(semp);
 
-    // Escribir dirección del buffer compartido
-    if (write(pipefd[1], &cinta, sizeof(char *)) != sizeof(char *)) {
-        perror("Error escribiendo dirección de memoria en la tubería");
-        exit(1);
-    }
 
     close(pipefd[1]);
     //Padre
@@ -152,4 +145,3 @@ int main(int argc, char *argv[]){
 
   return 0;
 }
-
