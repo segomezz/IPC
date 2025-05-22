@@ -1,3 +1,5 @@
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -14,7 +16,7 @@
 #define SEM_R2 "/SEMR2"
 #define PRODUCTO "AC"
 #define ROBOT "Robot 2"
-int main() {
+int main(int argc, char *argv[]) {
     // Apertura y verificación de semáforos
   sem_t *semp = sem_open(SEM_P, 0);
   if (semp == SEM_FAILED) {
@@ -41,16 +43,21 @@ int main() {
         perror("Error mapeando memoria compartida");
         exit(1);
     }
-
+    int fd_pipe = atoi(argv[1]);
     int cp = 0;
     while (1) {
-      printf("Robot2 se despierta\n");
+
       sem_wait(semr2);  // Espera su turno
 
-      if (strncmp(cinta, "ZZ", 2) == 0) break;
+      if (strncmp(cinta, "ZZ", 2) == 0) {
+        write(fd_pipe, &cp, sizeof(int));
+        close(fd_pipe);
+        break;
+	}
 
       if (strncmp(cinta, PRODUCTO, 2) == 0) {
         printf(ROBOT " empaqueta productos " PRODUCTO "\n");
+        fflush(stdout);
         strncpy(cinta, "--", 2);
         cp++;
 	sem_post(semp);  // Libera al productor
@@ -58,9 +65,10 @@ int main() {
       usleep(10000);
     }
 
-    printf("Robot 2 empaquetó un total de %d productos\n", cp);
+
     return 0;
 }
+
 
 
 
