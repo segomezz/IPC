@@ -62,4 +62,3 @@ int main() {
     printf("Robot 3 empaquetó un total de %d productos\n", cp);
     return 0;
 }
-
