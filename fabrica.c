@@ -1,6 +1,6 @@
 /*
 Sistemas Operativos. 2025 
-Nombres:
+Nombres: Sebastian Gomez y Angelika Moya Bolaños
 Especificaciones: Solo correr el archivo fabrica.c, los demás archivos (robots) serán ejecutados por el archivo fabrica.c. El archivo fabrica.c recibirá un número par como argumento y se encargará de crear los procesos necesarios para la simulación.
 */
 
